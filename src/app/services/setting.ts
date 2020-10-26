@@ -7,7 +7,7 @@ import {HttpClient} from '@angular/common/http';
 export class SettingService {
   setting: Setting;
   globalSetting: GlobalSetting;
-  settingKey: 'LunaSetting';
+  settingKey = 'LunaSetting';
 
   constructor(private store: LocalStorageService, private _http: HttpClient) {
     const settingData = this.store.get(this.settingKey);
@@ -26,6 +26,10 @@ export class SettingService {
       link.type = 'image/x-icon';
       link.rel = 'shortcut icon';
       link.href = resp.data.LOGO_URLS.favicon;
+
+      // 动态修改Title
+      if (resp.data.LOGIN_TITLE) { document.title = `Luna - ${resp.data.LOGIN_TITLE}`; }
+
       document.getElementsByTagName('head')[0].appendChild(link);
     });
   }

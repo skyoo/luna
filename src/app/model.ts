@@ -121,7 +121,7 @@ export class View {
   token: any;
   DatabaseApp: string;
   K8SApp: string;
-  shareroomId: string;
+  shareRoomId: string;
   termComp: ElementSshTermComponent;
 }
 
@@ -203,6 +203,7 @@ export class Setting {
   fontSize: number = 14;
   isLoadTreeAsync: string = '1';
   isSkipAllManualPassword: string = '0';
+  quickPaste = '0';
 }
 
 

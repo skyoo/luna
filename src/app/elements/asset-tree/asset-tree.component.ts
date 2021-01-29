@@ -10,6 +10,7 @@ import {AppService, HttpService, LogService, NavService, SettingService, TreeFil
 import {connectEvt} from '@app/globals';
 import {TreeNode, ConnectEvt} from '@app/model';
 import {AssetTreeDialogComponent} from '@app/elements/connect/connect.component';
+import {ancestorWhere} from 'tslint';
 
 declare var $: any;
 
@@ -22,6 +23,7 @@ export class ElementAssetTreeComponent implements OnInit, OnDestroy {
   @Input() query: string;
   @Input() searchEvt$: BehaviorSubject<string>;
   @ViewChild('rMenu') rMenu: ElementRef;
+  @ViewChild('rootRMenu') rootRMenu: ElementRef;
   Data = [];
   nodes = [];
   setting = {
@@ -44,6 +46,7 @@ export class ElementAssetTreeComponent implements OnInit, OnDestroy {
   assetsTree: any;
   applicationsTree: any;
   isShowRMenu = false;
+  isShowRootRMenu = false;
   rightClickSelectNode: any;
   hasLoginTo = false;
   treeFilterSubscription: any;
@@ -98,15 +101,16 @@ export class ElementAssetTreeComponent implements OnInit, OnDestroy {
   }
 
   refreshAssetsTree() {
-    this.assetsTree.destroy();
-    this.initAssetsTree(true);
+    this.initAssetsTree(false).then();
   }
 
-  initAssetsTree(refresh?: boolean) {
+  async initAssetsTree(refresh?: boolean) {
     const setting = Object.assign({}, this.setting);
     const myAssetsNodes = [
       {
-        name: '我的资产', id: 'myAssets', isParent: true,
+        name: await this.translate.get('My assets').toPromise(),
+        id: 'myAssets', isParent: true,
+        title: 'My assets',
         children: [], open: true
       }
     ];
@@ -130,6 +134,9 @@ export class ElementAssetTreeComponent implements OnInit, OnDestroy {
     this.loading = true;
     this._http.getMyGrantedNodes(this.isLoadTreeAsync, refresh).subscribe(resp => {
       this.loading = false;
+      if (refresh) {
+        this.assetsTree.destroy();
+      }
       const _assetTree = $.fn.zTree.init($('#assetsTree'), setting, resp);
       myAssetsNodes[0].children = _assetTree.getNodes();
       const myAssetsTree = $.fn.zTree.init($('#myAssets'), setting, myAssetsNodes);
@@ -138,15 +145,16 @@ export class ElementAssetTreeComponent implements OnInit, OnDestroy {
         this.refreshAssetsTree();
       });
       _assetTree.destroy();
+    }, error => {
+      this.loading = false;
     });
   }
 
-  addApplicationNodesIfNeed(nodes, applicationNodes) {
-    if (nodes.length > 1) {
-      const rootNode: TreeNode = nodes[0];
-      rootNode['children'] = nodes.slice(1, nodes.length);
-      applicationNodes[0].children.push(rootNode);
-    }
+  addApplicationNodesIfNeed(nodes, rootNode, applicationNodes) {
+      rootNode['children'] = nodes;
+      if (nodes.length > 0) {
+        applicationNodes[0].children.push(rootNode);
+      }
   }
 
   async initApplicationTree() {
@@ -157,21 +165,74 @@ export class ElementAssetTreeComponent implements OnInit, OnDestroy {
     };
     const applicationNodes = [
       {
-        name: '我的应用', id: 'myApplication', isParent: true,
+        name: await this.translate.get('My applications').toPromise(),
+        id: 'myApplication', isParent: true,
+        title: 'My applications',
         children: [], open: true
       }
     ];
+    const remoteAppRootNode = {
+      iconSkin: '',
+      id: 'ID_REMOTE_APP_ROOT',
+      isParent: true,
+      meta: {type: 'remote_app'},
+      name: this.translate.instant('Remote apps'),
+      nocheck: false,
+      open: false,
+      pId: '',
+      title: 'RemoteApp'
+    };
+    const dbRootNode = {
+      iconSkin: '',
+      id: 'ID_DATABASE_APP_ROOT',
+      isParent: true,
+      meta: {type: 'database_app'},
+      name: await this.translate.get('Databases').toPromise(),
+      nocheck: false,
+      open: false,
+      pId: '',
+      title: 'DatabaseApp'
+    };
+    const cloudAppRootNode = {
+      iconSkin: '',
+      id: 'ID_K8S_APP_ROOT',
+      isParent: true,
+      meta: {type: 'k8s_app'},
+      name: await this.translate.get('Kubernetes').toPromise(),
+      nocheck: false,
+      open: false,
+      pId: '',
+      title: 'K8sApp'
+    };
     const dbNodes = await this._http.getMyGrantedDBApps().toPromise();
-    this.addApplicationNodesIfNeed(dbNodes, applicationNodes);
-    const k8sNodes = await this._http.getMyGrantedK8SApps().toPromise();
-    this.addApplicationNodesIfNeed(k8sNodes, applicationNodes);
+    if (dbNodes.length > 0) {
+      const _dbTree = $.fn.zTree.init($('#DBAppsTree'), setting, dbNodes);
+      dbRootNode['children'] = _dbTree.getNodes();
+      applicationNodes[0].children.push(dbRootNode);
+      _dbTree.destroy();
+    }
     const remoteNodes = await this._http.getMyGrantedRemoteApps().toPromise();
-    this.addApplicationNodesIfNeed(remoteNodes, applicationNodes);
-    const tree = $.fn.zTree.init($('#applicationsTree'), setting, applicationNodes);
-    this.rootNodeAddDom(tree, () => {
-      this.refreshApplicationTree();
-    });
-    this.applicationsTree = tree;
+    if (remoteNodes.length > 0) {
+      const _remoteTree = $.fn.zTree.init($('#remoteAppsTree'), setting, remoteNodes);
+      remoteAppRootNode['children'] = _remoteTree.getNodes();
+      applicationNodes[0].children.push(remoteAppRootNode);
+      _remoteTree.destroy();
+    }
+    const cloudNodes = await this._http.getMyGrantedK8SApps().toPromise();
+    if (cloudNodes.length > 0) {
+      const _cloudTree = $.fn.zTree.init($('#K8SAppsTree'), setting, cloudNodes);
+      cloudAppRootNode['children'] = _cloudTree.getNodes();
+      applicationNodes[0].children.push(cloudAppRootNode);
+      _cloudTree.destroy();
+    }
+    if (applicationNodes[0].children.length > 0) {
+      const tree = $.fn.zTree.init($('#applicationsTree'), setting, applicationNodes);
+      this.rootNodeAddDom(tree, () => {
+        this.refreshApplicationTree();
+      });
+      this.applicationsTree = tree;
+    }
+
   }
 
   refreshApplicationTree() {
@@ -185,11 +246,13 @@ export class ElementAssetTreeComponent implements OnInit, OnDestroy {
     if (!treeNode.isParent) {
       this._http.getUserProfile().subscribe();
       this.connectAsset(treeNode);
+    } else {
+      this.applicationsTree.expandNode(treeNode);
     }
   }
 
   initTree() {
-    this.initAssetsTree();
+    this.initAssetsTree(false).then();
     this.initApplicationTree().then();
   }
 
@@ -217,12 +280,23 @@ export class ElementAssetTreeComponent implements OnInit, OnDestroy {
       top -= 60;
     }
     this.pos.left = left + 'px';
-    this.pos.top = top + 'px';
+    this.pos.top = (top - 25)  + 'px';
     this.isShowRMenu = true;
+  }
+
+  showRootRMenu(left, top) {
+    const clientHeight = document.body.clientHeight;
+    if (top + 60 > clientHeight) {
+      top -= 60;
+    }
+    this.pos.left = left + 'px';
+    this.pos.top = (top - 25)  + 'px';
+    this.isShowRootRMenu = true;
   }
 
   hideRMenu() {
     this.isShowRMenu = false;
+    this.isShowRootRMenu = false;
   }
 
   nodeSupportSSH() {
@@ -286,10 +360,32 @@ export class ElementAssetTreeComponent implements OnInit, OnDestroy {
     if (!this.rightClickSelectNode) {
       return [];
     }
+
     return menuList;
   }
 
+  forceRefreshTree() {
+    this.initAssetsTree(true).then();
+  }
+
+  get RootRMenuList() {
+    const menuList = [{
+      'id': 'refresh',
+      'name': 'Force refresh',
+      'fa': 'fa-refresh',
+      'hide': false,
+      'click': this.forceRefreshTree.bind(this)
+    }];
+    return menuList;
+  }
+
+
   onRightClick(event, treeId, treeNode) {
+
+    if (treeNode.id === 'myAssets') {
+      this.showRootRMenu(event.clientX, event.clientY);
+      return;
+    }
     if (!treeNode || treeNode.isParent) {
       return null;
     }
@@ -401,7 +497,7 @@ export class ElementAssetTreeComponent implements OnInit, OnDestroy {
   }
 
   filterApplicationsTree(keyword) {
-    if (!this.filterApplicationsTree) {
+    if (!this.applicationsTree) {
       return null;
     }
     function filterCallback(node: TreeNode) {
@@ -441,9 +537,17 @@ export class ElementAssetTreeComponent implements OnInit, OnDestroy {
         const newNode = {id: 'search', name: name, isParent: true, open: true, zAsync: true};
         searchNode = this.assetsTree.addNodes(null, newNode)[0];
         searchNode.zAsync = true;
-        nodes.forEach((item) => {
-          this.assetsTree.addNodes(searchNode, item);
+        const nodesGroupByOrg = groupBy(nodes, (node) => {
+          return node.meta.asset.org_name;
         });
+        nodesGroupByOrg.forEach((item) => {
+          const orgName = item[0].meta.asset.org_name;
+          const orgNodeData = {id: orgName, name: orgName, isParent: true, open: true, zAsync: true};
+          const orgNode = this.assetsTree.addNodes(searchNode, orgNodeData)[0];
+          orgNode.zAsync = true;
+          this.assetsTree.addNodes(orgNode, item);
+        });
+        searchNode.open = true;
       });
     return;
   }
